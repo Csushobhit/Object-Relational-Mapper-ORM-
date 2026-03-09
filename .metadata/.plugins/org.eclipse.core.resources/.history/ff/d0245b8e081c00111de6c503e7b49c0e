@@ -1,0 +1,225 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.session.SimpleOrmSession;
+
+import javax.swing.*;
+import java.awt.*;
+import java.sql.Connection;
+import java.util.List;
+import java.util.Optional;
+
+public class StudentDriver extends JFrame {
+
+    private JTextField idField;
+    private JTextField nameField;
+    private JTextField ageField;
+    private JTextField courseField;
+    private JTextArea outputArea;
+
+    private SimpleOrmSession session;
+
+    public StudentDriver() {
+
+        try {
+
+            ConnectionManager manager = new ConnectionManager();
+            Connection connection = manager.getConnection();
+            session = new SimpleOrmSession(connection);
+
+        } catch (Exception e) {
+
+            JOptionPane.showMessageDialog(this,"Database connection failed");
+            e.printStackTrace();
+        }
+
+        setTitle("Simple ORM - Student Manager");
+        setSize(500,500);
+        setLayout(new BorderLayout());
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        JPanel formPanel = new JPanel(new GridLayout(4,2));
+
+        formPanel.add(new JLabel("ID"));
+        idField = new JTextField();
+        formPanel.add(idField);
+
+        formPanel.add(new JLabel("Name"));
+        nameField = new JTextField();
+        formPanel.add(nameField);
+
+        formPanel.add(new JLabel("Age"));
+        ageField = new JTextField();
+        formPanel.add(ageField);
+
+        formPanel.add(new JLabel("Course"));
+        courseField = new JTextField();
+        formPanel.add(courseField);
+
+        add(formPanel,BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel();
+
+        JButton saveBtn = new JButton("Insert");
+        JButton findBtn = new JButton("Find");
+        JButton updateBtn = new JButton("Update");
+        JButton deleteBtn = new JButton("Delete");
+        JButton viewAllBtn = new JButton("View All");
+
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(findBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewAllBtn);
+
+        add(buttonPanel,BorderLayout.CENTER);
+
+        outputArea = new JTextArea();
+        add(new JScrollPane(outputArea),BorderLayout.SOUTH);
+
+        // INSERT
+        saveBtn.addActionListener(e -> {
+
+            try {
+
+                Student s = new Student();
+
+                s.setName(nameField.getText());
+                s.setAge(Integer.parseInt(ageField.getText()));
+                s.setCourse(courseField.getText());
+
+                session.save(s);
+
+                outputArea.setText("Student inserted successfully.");
+
+            } catch(Exception ex){
+
+                outputArea.setText("Insert failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // FIND
+        findBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    Student s = student.get();
+
+                    nameField.setText(s.getName());
+                    ageField.setText(String.valueOf(s.getAge()));
+                    courseField.setText(s.getCourse());
+
+                    outputArea.setText("Student found.");
+
+                } else {
+
+                    outputArea.setText("Student not found.");
+
+                }
+
+            } catch(Exception ex){
+
+                outputArea.setText("Find failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // UPDATE
+        updateBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    Student s = student.get();
+
+                    s.setName(nameField.getText());
+                    s.setAge(Integer.parseInt(ageField.getText()));
+                    s.setCourse(courseField.getText());
+
+                    session.update(s);
+
+                    outputArea.setText("Student updated.");
+
+                }
+
+            } catch(Exception ex){
+
+                outputArea.setText("Update failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // DELETE
+        deleteBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    session.delete(student.get());
+
+                    outputArea.setText("Student deleted.");
+
+                }
+
+            } catch(Exception ex){
+
+                outputArea.setText("Delete failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // VIEW ALL
+        viewAllBtn.addActionListener(e -> {
+
+            try {
+
+                List<Student> students = session.findAll(Student.class);
+
+                StringBuilder sb = new StringBuilder();
+
+                for(Student s : students){
+
+                    sb.append(s.getId())
+                      .append(" | ")
+                      .append(s.getName())
+                      .append(" | ")
+                      .append(s.getAge())
+                      .append(" | ")
+                      .append(s.getCourse())
+                      .append("\n");
+
+                }
+
+                outputArea.setText(sb.toString());
+
+            } catch(Exception ex){
+
+                outputArea.setText("Error loading students.");
+
+            }
+
+        });
+
+    }
+}

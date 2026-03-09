@@ -1,0 +1,17 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import javax.swing.SwingUtilities;
+
+public class App {
+
+    public static void main(String[] args) {
+
+        SwingUtilities.invokeLater(() -> {
+
+            StudentSwingUI ui = new StudentSwingUI();
+            ui.setVisible(true);
+
+        });
+
+    }
+}

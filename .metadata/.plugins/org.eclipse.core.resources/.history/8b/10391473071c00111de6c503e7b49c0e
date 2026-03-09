@@ -1,0 +1,228 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.session.SimpleOrmSession;
+
+import java.sql.Connection;
+import java.util.InputMismatchException;
+import java.util.List;
+import java.util.Optional;
+import java.util.Scanner;
+
+public class StudentDriver {
+
+    public static void run() {
+
+        try {
+
+            ConnectionManager manager = new ConnectionManager();
+            Connection connection = manager.getConnection();
+            SimpleOrmSession session = new SimpleOrmSession(connection);
+
+            Scanner sc = new Scanner(System.in);
+
+            while (true) {
+
+                try {
+
+                    System.out.println("\n===== STUDENT ORM MENU =====");
+                    System.out.println("1 Insert Student");
+                    System.out.println("2 Find Student By ID");
+                    System.out.println("3 Update Student");
+                    System.out.println("4 Delete Student");
+                    System.out.println("5 View All Students");
+                    System.out.println("6 Exit");
+
+                    System.out.print("Enter choice: ");
+
+                    int choice = sc.nextInt();
+
+                    switch (choice) {
+
+                        case 1:
+
+                            try {
+
+                                Student s = new Student();
+
+                                System.out.print("Name: ");
+                                s.setName(sc.next());
+
+                                System.out.print("Age: ");
+                                s.setAge(sc.nextInt());
+
+                                System.out.print("Course: ");
+                                s.setCourse(sc.next());
+
+                                session.save(s);
+
+                                System.out.println("Student inserted successfully.");
+
+                            } catch (Exception e) {
+
+                                System.out.println("Error inserting student: " + e.getMessage());
+
+                            }
+
+                            break;
+
+                        case 2:
+
+                            try {
+
+                                System.out.print("Enter ID: ");
+                                Long id = sc.nextLong();
+
+                                Optional<Student> student = session.findById(Student.class, id);
+
+                                if (student.isPresent()) {
+
+                                    Student st = student.get();
+
+                                    System.out.println("ID: " + st.getId());
+                                    System.out.println("Name: " + st.getName());
+                                    System.out.println("Age: " + st.getAge());
+                                    System.out.println("Course: " + st.getCourse());
+
+                                } else {
+
+                                    System.out.println("Student not found.");
+
+                                }
+
+                            } catch (Exception e) {
+
+                                System.out.println("Error finding student: " + e.getMessage());
+
+                            }
+
+                            break;
+
+                        case 3:
+
+                            try {
+
+                                System.out.print("Enter ID: ");
+                                Long uid = sc.nextLong();
+
+                                Optional<Student> updateStudent =
+                                        session.findById(Student.class, uid);
+
+                                if (updateStudent.isPresent()) {
+
+                                    Student us = updateStudent.get();
+
+                                    System.out.print("New Course: ");
+                                    us.setCourse(sc.next());
+
+                                    session.update(us);
+
+                                    System.out.println("Student updated.");
+
+                                } else {
+
+                                    System.out.println("Student not found.");
+
+                                }
+
+                            } catch (Exception e) {
+
+                                System.out.println("Error updating student: " + e.getMessage());
+
+                            }
+
+                            break;
+
+                        case 4:
+
+                            try {
+
+                                System.out.print("Enter ID: ");
+                                Long did = sc.nextLong();
+
+                                Optional<Student> deleteStudent =
+                                        session.findById(Student.class, did);
+
+                                if (deleteStudent.isPresent()) {
+
+                                    session.delete(deleteStudent.get());
+
+                                    System.out.println("Student deleted.");
+
+                                } else {
+
+                                    System.out.println("Student not found.");
+
+                                }
+
+                            } catch (Exception e) {
+
+                                System.out.println("Error deleting student: " + e.getMessage());
+
+                            }
+
+                            break;
+
+                        case 5:
+
+                            try {
+
+                                List<Student> students = session.findAll(Student.class);
+
+                                if (students.isEmpty()) {
+
+                                    System.out.println("No students found.");
+
+                                } else {
+
+                                    students.forEach(st ->
+                                            System.out.println(
+                                                    st.getId() + " | " +
+                                                    st.getName() + " | " +
+                                                    st.getAge() + " | " +
+                                                    st.getCourse()
+                                            )
+                                    );
+                                }
+
+                            } catch (Exception e) {
+
+                                System.out.println("Error fetching students: " + e.getMessage());
+
+                            }
+
+                            break;
+
+                        case 6:
+
+                            System.out.println("Exiting program.");
+                            return;
+
+                        default:
+
+                            System.out.println("Invalid choice.");
+
+                    }
+
+                } catch (InputMismatchException e) {
+
+                    System.out.println("Invalid input type. Please enter correct value.");
+                    sc.nextLine(); // clear invalid input
+
+                } catch (Exception e) {
+
+                    System.out.println("Unexpected error: " + e.getMessage());
+
+                }
+
+            }
+
+        } catch (Exception e) {
+
+            System.out.println("Failed to start Student Driver: " + e.getMessage());
+
+        }
+
+    }
+
+}

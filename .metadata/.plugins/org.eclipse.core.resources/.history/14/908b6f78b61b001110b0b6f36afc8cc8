@@ -1,0 +1,40 @@
+package com.yourcompany.simpleorm.session;
+import java.sql.Connection;
+import java.util.Optional;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+public class SimpleOrmSession implements OrmSession{
+	private Connection connection;
+	
+	@Override
+	public void save(Object entity)
+	{
+		System.out.println("SimpleOrmSession.save() called for entity" + (entity != null ? entity.getClass().getSimpleName() : "null") + " - IMPLEMENTATION PENDING");
+	
+	if(entity == null)
+	{
+		throw new NullPointerException("Entity cannot be null");
+	}
+	}
+	@Override
+	public <T> Optional<T> findById(Class<T> clazz, Object id)
+	{
+		 System.out.println("SimpleOrmSession.findById() called for class: " + clazz.getSimpleName() + ", id: " + id + " - IMPLEMENTATION PENDING");
+	        if (clazz == null) {
+	            throw new NullPointerException("Class cannot be null.");
+	        }
+	        if (id == null) {
+	             throw new NullPointerException("ID cannot be null.");
+	        }
+	      return Optional.empty();
+	}
+	@Override
+	public void close() throws Exception
+	{
+		System.out.println("Closing SimpleOrmSession...");
+		
+		ConnectionManager.closeConnection(this.connection);;
+		this.connection = null;
+		System.out.println("SimpleOrmSession closed.");
+	}
+}

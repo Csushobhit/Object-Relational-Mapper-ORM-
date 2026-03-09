@@ -1,0 +1,90 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.session.SimpleOrmSession;
+import com.yourcompany.simpleorm.model.User;
+
+import org.junit.jupiter.api.*;
+
+import java.sql.Connection;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class AppTest {
+
+    static SimpleOrmSession session;
+
+    @BeforeAll
+    static void setup() throws Exception {
+
+        ConnectionManager connectionManager = new ConnectionManager();
+        Connection connection = connectionManager.getConnection();
+
+        session = new SimpleOrmSession(connection);
+
+    }
+
+    @Test
+    @Order(1)
+    void testSaveUser() {
+
+        User user = new User();
+        user.setUsername("john_test");
+        user.setEmail("john@test.com");
+
+        session.save(user);
+
+        assertNotNull(user);
+
+    }
+
+    @Test
+    @Order(2)
+    void testFindById() {
+
+        Optional<User> user = session.findById(User.class, 1L);
+
+        assertTrue(user.isPresent());
+
+    }
+
+    @Test
+    @Order(3)
+    void testUpdate() {
+
+        Optional<User> userOpt = session.findById(User.class, 1L);
+
+        assertTrue(userOpt.isPresent());
+
+        User user = userOpt.get();
+        user.setEmail("updated@test.com");
+
+        session.update(user);
+
+        Optional<User> updated = session.findById(User.class, 1L);
+
+        assertEquals("updated@test.com", updated.get().getEmail());
+
+    }
+
+    @Test
+    @Order(4)
+    void testDelete() {
+
+        User user = new User();
+        user.setUsername("delete_test");
+        user.setEmail("delete@test.com");
+
+        session.save(user);
+
+        session.delete(user);
+
+        Optional<User> result = session.findById(User.class, user.getId());
+
+        assertTrue(result.isEmpty());
+
+    }
+
+}

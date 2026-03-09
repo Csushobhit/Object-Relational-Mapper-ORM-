@@ -1,0 +1,6 @@
+package com.yourcompany.simpleorm;
+
+public class DbConfigLoader {
+	private static final String PROPERTIES_FILE = "db."
+	
+}

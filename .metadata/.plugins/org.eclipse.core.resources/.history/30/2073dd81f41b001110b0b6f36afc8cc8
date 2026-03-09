@@ -1,0 +1,14 @@
+package com.yourcompany.simpleorm.session;
+
+import java.util.Optional;
+import com.yourcompany.simpleorm.exception.OrmException;
+public interface OrmSession extends AutoCloseable{
+	void save(Object entity);
+	<T> Optional<T> findById(Class<T> clazz, Object id);
+	void beginTransaction() throws OrmException;
+	void commit() throws OrmException;
+	void rollback() throws OrmException;
+	
+	@Override
+	 void close() throws Exception;
+}

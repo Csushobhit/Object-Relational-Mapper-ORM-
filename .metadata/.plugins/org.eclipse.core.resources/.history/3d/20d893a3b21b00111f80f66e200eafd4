@@ -1,0 +1,5 @@
+package com.yourcompany.simpleorm.session;
+
+public class SimpleOrmSession {
+
+}

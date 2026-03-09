@@ -1,0 +1,50 @@
+package com.yourcompany.simpleorm.jdbc;
+
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+public class ConnectionManager {
+	
+	private final String jdbcUrl;
+	private final String username;
+	private final String password;
+	
+	public ConnectionManager(String jdbcUrl, String username, String password) {
+        if (jdbcUrl == null || jdbcUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("JDBC URL cannot be null or empty.");
+        }
+        if (username == null) {
+             throw new IllegalArgumentException("Database username cannot be null.");
+        }
+         if (password == null) {
+             throw new IllegalArgumentException("Database password cannot be null.");
+        }
+
+        this.jdbcUrl = jdbcUrl;
+        this.username = username;
+        this.password = password;
+	}
+	public ConnectionManager1(String jdbcUrl, String username, String password) 
+	{
+        this(jdbcUrl, username, password, null); 
+    }
+	 public Connection getConnection() {
+	        try {
+	            System.out.println("Attempting database connection to: " + jdbcUrl); 
+	            Connection connection = DriverManager.getConnection(this.jdbcUrl, this.username, this.password);
+	            System.out.println("Database connection successful!"); 
+	            return connection;
+
+	        } catch (SQLException e) {
+	            System.err.println("Failed to establish database connection!");
+	            System.err.println("JDBC URL: " + this.jdbcUrl);
+	            System.err.println("Username: " + this.username);
+	            e.printStackTrace(); 
+	            throw new RuntimeException("Failed to acquire database connection. URL: " + this.jdbcUrl, e);
+	        }
+	 }
+	 
+	 
+}
+

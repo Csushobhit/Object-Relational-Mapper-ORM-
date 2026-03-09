@@ -1,0 +1,39 @@
+package com.yourcompany.simpleorm.config;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+public class OrmConfig {
+	private static final Properties properties = new Properties();
+	
+	static {
+		String propFileName = "db.properties";
+		try(InputStream input = OrmConfig.class.getClassLoader().getResourceAsStream(propFileName))
+		{
+			if(input == null)
+			{
+				System.err.println("ERROR: Unable to find " + propFileName + "in classpath.");	
+			}
+			else
+			{
+				properties.load(input);
+				System.out.println("Loaded database configuration from" + propFileName);
+			}
+		} catch(IOException e)
+		{
+			System.err.println("ERROR: Failed to load" + propFileName);
+			e.printStackTrace();
+		}
+	}
+	public static String getJdbcUrl() {
+        return properties.getProperty("db.url", "jdbc:h2:mem:default"); // Provide defaults
+    }
+
+    public static String getDbUsername() {
+        return properties.getProperty("db.username", "sa");
+    }
+
+    public static String getDbPassword() {
+        return properties.getProperty("db.password", "");
+    }
+}

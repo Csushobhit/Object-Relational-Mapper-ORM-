@@ -1,0 +1,78 @@
+package com.yourcompany.simpleorm.jdbc;
+
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+public class ConnectionManager {
+	
+	private final String jdbcUrl;
+	private final String username;
+	private final String password;
+	
+	public ConnectionManager(String jdbcUrl, String username, String password, String driverClassName){
+		if (driverClassName != null && !driverClassName.trim().isEmpty()) {
+		    try {
+		        System.out.println("Loading JDBC Driver: " + driverClassName);
+		        Class.forName(driverClassName);
+		        System.out.println("Driver loaded successfully.");
+		    } 
+		    catch (ClassNotFoundException e) {
+		        System.err.println("JDBC Driver class not found: " + driverClassName);
+		        throw new RuntimeException("Failed to load JDBC driver.", e);
+		    }
+		}
+		if (jdbcUrl == null || jdbcUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("JDBC URL cannot be null or empty.");
+        }
+        if (username == null) {
+             throw new IllegalArgumentException("Database username cannot be null.");
+        }
+         if (password == null) {
+             throw new IllegalArgumentException("Database password cannot be null.");
+        }
+
+        this.jdbcUrl = jdbcUrl;
+        this.username = username;
+        this.password = password;
+        
+        System.out.println("ConnectionManager initialized for URL: " + jdbcUrl);
+        System.out.println("Skipping explicit JDBC driver loading (modern driver assumed).");
+	}
+	public ConnectionManager(String jdbcUrl, String username, String password) {
+	    this(jdbcUrl, username, password, null);
+	}
+	
+	 public Connection getConnection() {
+	        try {
+	            System.out.println("Attempting database connection to: " + jdbcUrl); 
+	            Connection connection = DriverManager.getConnection(this.jdbcUrl, this.username, this.password);
+	            System.out.println("Database connection successful!"); 
+	            return connection;
+
+	        } catch (SQLException e) {
+	            System.err.println("Failed to establish database connection!");
+	            System.err.println("JDBC URL: " + this.jdbcUrl);
+	            System.err.println("Username: " + this.username);
+	            e.printStackTrace(); 
+	            throw new RuntimeException("Failed to acquire database connection. URL: " + this.jdbcUrl, e);
+	        }
+	 }
+	 
+	 public static void closeConnection(Connection connection)
+	 {
+		 if(connection != null)
+		 {
+			 try {
+				 System.out.println("Attempting to close the database connection.");
+				 connection.close();
+				 System.out.println("Database connection closed successfully");
+			 } catch(SQLException e)
+			 {
+				 System.err.println("Failed to close database connection!");
+				 e.printStackTrace();
+			 }
+		 }
+	 }	 
+}
+

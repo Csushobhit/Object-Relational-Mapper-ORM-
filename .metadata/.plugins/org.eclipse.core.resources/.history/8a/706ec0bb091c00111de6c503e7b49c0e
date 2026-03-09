@@ -1,0 +1,265 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.session.SimpleOrmSession;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.sql.Connection;
+import java.util.List;
+import java.util.Optional;
+
+public class StudentDriver extends JFrame {
+
+    private JTextField idField;
+    private JTextField nameField;
+    private JTextField ageField;
+    private JTextField courseField;
+
+    private JTable table;
+    private DefaultTableModel tableModel;
+
+    private SimpleOrmSession session;
+
+    public StudentDriver() {
+
+        try {
+
+            ConnectionManager manager = new ConnectionManager();
+            Connection connection = manager.getConnection();
+            session = new SimpleOrmSession(connection);
+
+        } catch (Exception e) {
+
+            JOptionPane.showMessageDialog(this,"Database connection failed");
+            e.printStackTrace();
+        }
+
+        setTitle("Simple ORM - Student Manager");
+        setSize(700,500);
+        setLayout(new BorderLayout());
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        // ---------- FORM PANEL ----------
+        JPanel formPanel = new JPanel(new GridLayout(4,2,5,5));
+
+        formPanel.add(new JLabel("ID (for Find/Update/Delete)"));
+        idField = new JTextField();
+        formPanel.add(idField);
+
+        formPanel.add(new JLabel("Name"));
+        nameField = new JTextField();
+        formPanel.add(nameField);
+
+        formPanel.add(new JLabel("Age"));
+        ageField = new JTextField();
+        formPanel.add(ageField);
+
+        formPanel.add(new JLabel("Course"));
+        courseField = new JTextField();
+        formPanel.add(courseField);
+
+        add(formPanel,BorderLayout.NORTH);
+
+        // ---------- BUTTON PANEL ----------
+        JPanel buttonPanel = new JPanel();
+
+        JButton saveBtn = new JButton("Insert");
+        JButton findBtn = new JButton("Find");
+        JButton updateBtn = new JButton("Update");
+        JButton deleteBtn = new JButton("Delete");
+        JButton viewAllBtn = new JButton("Refresh Table");
+
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(findBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewAllBtn);
+
+        add(buttonPanel,BorderLayout.CENTER);
+
+        // ---------- TABLE ----------
+        tableModel = new DefaultTableModel();
+        tableModel.setColumnIdentifiers(new Object[]{"ID","Name","Age","Course"});
+
+        table = new JTable(tableModel);
+        JScrollPane scrollPane = new JScrollPane(table);
+
+        add(scrollPane,BorderLayout.SOUTH);
+
+        // ---------- INSERT ----------
+        saveBtn.addActionListener(e -> {
+
+            try {
+
+                Student s = new Student();
+
+                s.setName(nameField.getText());
+                s.setAge(Integer.parseInt(ageField.getText()));
+                s.setCourse(courseField.getText());
+
+                session.save(s);
+
+                JOptionPane.showMessageDialog(this,
+                        "Student inserted successfully\nGenerated ID: " + s.getId());
+
+                loadStudents();
+
+            } catch(Exception ex){
+
+                JOptionPane.showMessageDialog(this,"Insert failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // ---------- FIND ----------
+        findBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    Student s = student.get();
+
+                    nameField.setText(s.getName());
+                    ageField.setText(String.valueOf(s.getAge()));
+                    courseField.setText(s.getCourse());
+
+                    JOptionPane.showMessageDialog(this,"Student found");
+
+                } else {
+
+                    JOptionPane.showMessageDialog(this,"Student not found");
+
+                }
+
+            } catch(Exception ex){
+
+                JOptionPane.showMessageDialog(this,"Find failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // ---------- UPDATE ----------
+        updateBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    Student s = student.get();
+
+                    s.setName(nameField.getText());
+                    s.setAge(Integer.parseInt(ageField.getText()));
+                    s.setCourse(courseField.getText());
+
+                    session.update(s);
+
+                    JOptionPane.showMessageDialog(this,"Student updated");
+
+                    loadStudents();
+
+                } else {
+
+                    JOptionPane.showMessageDialog(this,"Student not found");
+
+                }
+
+            } catch(Exception ex){
+
+                JOptionPane.showMessageDialog(this,"Update failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // ---------- DELETE ----------
+        deleteBtn.addActionListener(e -> {
+
+            try {
+
+                Long id = Long.parseLong(idField.getText());
+
+                Optional<Student> student = session.findById(Student.class,id);
+
+                if(student.isPresent()){
+
+                    Student s = student.get();
+
+                    int confirm = JOptionPane.showConfirmDialog(
+                            this,
+                            "Delete student?\n\n"+s.getName(),
+                            "Confirm Delete",
+                            JOptionPane.YES_NO_OPTION
+                    );
+
+                    if(confirm == JOptionPane.YES_OPTION){
+
+                        session.delete(s);
+
+                        JOptionPane.showMessageDialog(this,"Student deleted");
+
+                        loadStudents();
+
+                    }
+
+                } else {
+
+                    JOptionPane.showMessageDialog(this,"Student not found");
+
+                }
+
+            } catch(Exception ex){
+
+                JOptionPane.showMessageDialog(this,"Delete failed: "+ex.getMessage());
+
+            }
+
+        });
+
+        // ---------- VIEW ALL ----------
+        viewAllBtn.addActionListener(e -> loadStudents());
+
+        // load table on start
+        loadStudents();
+    }
+
+    // ---------- LOAD TABLE ----------
+    private void loadStudents(){
+
+        try {
+
+            List<Student> students = session.findAll(Student.class);
+
+            tableModel.setRowCount(0);
+
+            for(Student s : students){
+
+                tableModel.addRow(new Object[]{
+                        s.getId(),
+                        s.getName(),
+                        s.getAge(),
+                        s.getCourse()
+                });
+
+            }
+
+        } catch(Exception e){
+
+            JOptionPane.showMessageDialog(this,"Error loading students");
+
+        }
+    }
+}

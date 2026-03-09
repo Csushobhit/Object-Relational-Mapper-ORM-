@@ -1,0 +1,239 @@
+package com.yourcompany.simpleorm.session;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.util.OrmMetadataExtractor;
+import com.yourcompany.simpleorm.metadata.OrmMetadata;
+
+import java.lang.reflect.Field;
+import java.lang.IllegalAccessException;
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+public class SimpleOrmSession implements OrmSession {
+
+    private static final Map<Class<?>, Integer> JAVA_TO_SQL_TYPE_MAP = Map.ofEntries(
+            Map.entry(String.class, Types.VARCHAR),
+            Map.entry(Integer.class, Types.INTEGER), Map.entry(int.class, Types.INTEGER),
+            Map.entry(Long.class, Types.BIGINT), Map.entry(long.class, Types.BIGINT),
+            Map.entry(Double.class, Types.DOUBLE), Map.entry(double.class, Types.DOUBLE),
+            Map.entry(Float.class, Types.FLOAT), Map.entry(float.class, Types.FLOAT),
+            Map.entry(Boolean.class, Types.BOOLEAN), Map.entry(boolean.class, Types.BOOLEAN),
+            Map.entry(java.sql.Date.class, Types.DATE),
+            Map.entry(LocalDate.class, Types.DATE),
+            Map.entry(java.sql.Timestamp.class, Types.TIMESTAMP),
+            Map.entry(LocalDateTime.class, Types.TIMESTAMP),
+            Map.entry(BigDecimal.class, Types.DECIMAL)
+    );
+
+    private static int getSqlTypeForJavaType(Class<?> javaType) {
+        return JAVA_TO_SQL_TYPE_MAP.getOrDefault(javaType, Types.OTHER);
+    }
+
+    private Connection connection;
+
+    public SimpleOrmSession(Connection connection) {
+        this.connection = Objects.requireNonNull(connection,
+                "Database connection cannot be null for OrmSession.");
+        try {
+            if (this.connection.isClosed()) {
+                throw new IllegalArgumentException(
+                        "Cannot create OrmSession with a closed database connection.");
+            }
+            System.out.println("SimpleOrmSession created with active connection: " + this.connection);
+        } catch (SQLException e) {
+            throw new RuntimeException(
+                    "Failed to verify connection status during OrmSession creation.", e);
+        }
+    }
+
+    @Override
+    public void save(Object entity) {
+
+        if (entity == null) {
+            throw new NullPointerException("Cannot save a null entity.");
+        }
+
+        Class<?> entityClass = entity.getClass();
+
+        System.out.println("SimpleOrmSession.save() called for entity of type: " + entityClass.getName());
+
+        OrmMetadata<?> metadata;
+
+        try {
+            metadata = OrmMetadataExtractor.getMetadata(entityClass);
+            System.out.println("Retrieved metadata for table: '" + metadata.tableName() + "'");
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Failed to save object. Class is not a valid ORM entity: " + entityClass.getName(), e);
+        }
+
+        Field primaryKeyField = metadata.primaryKeyField();
+
+        if (primaryKeyField == null) {
+            throw new IllegalStateException("Entity class " + entityClass.getName() + " does not have an @Id field.");
+        }
+
+        List<String> columnNamesForInsert = new ArrayList<>();
+        List<Field> fieldsForInsert = new ArrayList<>();
+
+        for (Map.Entry<Field, String> entry : metadata.columnNames().entrySet()) {
+
+            Field field = entry.getKey();
+            String columnName = entry.getValue();
+
+            if (!field.equals(primaryKeyField)) {
+                columnNamesForInsert.add(columnName);
+                fieldsForInsert.add(field);
+            }
+        }
+
+        if (columnNamesForInsert.isEmpty()) {
+            throw new IllegalStateException(
+                    "No columns found to insert for entity: " + entityClass.getName());
+        }
+
+        String columnsPart = String.join(", ", columnNamesForInsert);
+
+        String parametersPart = columnNamesForInsert
+                .stream()
+                .map(col -> "?")
+                .collect(Collectors.joining(", "));
+
+        String sqlInsertStatement = String.format(
+                "INSERT INTO %s (%s) VALUES (%s)",
+                metadata.tableName(),
+                columnsPart,
+                parametersPart
+        );
+
+        System.out.println("Generated SQL: " + sqlInsertStatement);
+
+        try (PreparedStatement preparedStatement = this.connection.prepareStatement(sqlInsertStatement)) {
+
+            int parameterIndex = 1;
+
+            for (Field field : fieldsForInsert) {
+
+                Object value;
+
+                try {
+                    field.setAccessible(true);
+                    value = field.get(entity);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException("Reflection error accessing field: " + field.getName(), e);
+                }
+
+                try {
+
+                    if (value == null) {
+
+                        int sqlType = getSqlTypeForJavaType(field.getType());
+                        preparedStatement.setNull(parameterIndex, sqlType);
+
+                    } else {
+
+                        Class<?> fieldType = field.getType();
+
+                        if (fieldType.equals(String.class)) {
+                            preparedStatement.setString(parameterIndex, (String) value);
+
+                        } else if (fieldType.equals(Integer.class) || fieldType.equals(int.class)) {
+                            preparedStatement.setInt(parameterIndex, (Integer) value);
+
+                        } else if (fieldType.equals(Long.class) || fieldType.equals(long.class)) {
+                            preparedStatement.setLong(parameterIndex, (Long) value);
+
+                        } else if (fieldType.equals(Double.class) || fieldType.equals(double.class)) {
+                            preparedStatement.setDouble(parameterIndex, (Double) value);
+
+                        } else if (fieldType.equals(Boolean.class) || fieldType.equals(boolean.class)) {
+                            preparedStatement.setBoolean(parameterIndex, (Boolean) value);
+
+                        } else if (fieldType.equals(java.sql.Date.class)) {
+                            preparedStatement.setDate(parameterIndex, (java.sql.Date) value);
+
+                        } else if (fieldType.equals(java.sql.Timestamp.class)) {
+                            preparedStatement.setTimestamp(parameterIndex, (java.sql.Timestamp) value);
+
+                        } else if (fieldType.equals(LocalDate.class)) {
+                            preparedStatement.setDate(parameterIndex, java.sql.Date.valueOf((LocalDate) value));
+
+                        } else if (fieldType.equals(LocalDateTime.class)) {
+                            preparedStatement.setTimestamp(parameterIndex, java.sql.Timestamp.valueOf((LocalDateTime) value));
+
+                        } else if (fieldType.equals(BigDecimal.class)) {
+                            preparedStatement.setBigDecimal(parameterIndex, (BigDecimal) value);
+
+                        } else {
+                            preparedStatement.setObject(parameterIndex, value);
+                        }
+                    }
+
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed setting PreparedStatement parameter for field: " + field.getName(), e);
+                }
+
+                parameterIndex++;
+            }
+
+            int rowsAffected = preparedStatement.executeUpdate();
+
+            System.out.println("Database insert executed successfully. Rows affected: " + rowsAffected);
+
+            if (rowsAffected != 1) {
+                throw new RuntimeException("Insert operation failed, expected 1 row but got " + rowsAffected);
+            }
+
+        } catch (SQLException e) {
+
+            System.err.println("ERROR: Database error during save operation for entity: " + entityClass.getSimpleName());
+            System.err.println("SQL: " + sqlInsertStatement);
+
+            throw new RuntimeException("Database error occurred during save operation. SQL: " + sqlInsertStatement, e);
+        }
+    }
+
+    @Override
+    public <T> Optional<T> findById(Class<T> clazz, Object id) {
+
+        if (clazz == null) {
+            throw new NullPointerException("Class cannot be null.");
+        }
+
+        if (id == null) {
+            throw new NullPointerException("ID cannot be null.");
+        }
+
+        System.out.println("SimpleOrmSession.findById() called for class: "
+                + clazz.getSimpleName() + ", id: " + id);
+
+        OrmMetadata<T> metadata = OrmMetadataExtractor.getMetadata(clazz);
+
+        System.out.println("Obtained metadata for table: " + metadata.tableName() + " - IMPLEMENTATION PENDING");
+
+        return Optional.empty();
+    }
+
+    @Override
+    public void close() throws Exception {
+
+        System.out.println("Closing SimpleOrmSession...");
+
+        ConnectionManager.closeConnection(this.connection);
+
+        this.connection = null;
+
+        System.out.println("SimpleOrmSession closed.");
+    }
+}

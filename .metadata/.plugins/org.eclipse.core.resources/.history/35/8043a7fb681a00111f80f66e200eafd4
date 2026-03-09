@@ -1,0 +1,5 @@
+package com.yourcompany.simpleorm.metadata;
+
+public record OrmMetadata() {
+
+}

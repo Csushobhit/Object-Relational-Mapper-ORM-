@@ -1,0 +1,342 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.session.SimpleOrmSession;
+
+import javax.swing.*;
+import java.awt.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.List;
+import java.util.Optional;
+
+public class StudentDriver extends JFrame {
+
+    private JTextField rollField = new JTextField();
+    private JTextField nameField = new JTextField();
+    private JTextField ageField = new JTextField();
+    private JTextField courseField = new JTextField();
+
+    private JTextArea outputArea = new JTextArea();
+
+    private JPanel formPanel = new JPanel(new GridLayout(4,2,5,5));
+
+    private SimpleOrmSession session;
+
+    private String currentMode = "";
+
+    public StudentDriver(){
+
+        try{
+
+            ConnectionManager manager = new ConnectionManager();
+            Connection conn = manager.getConnection();
+
+            session = new SimpleOrmSession(conn);
+
+        }catch(Exception e){
+
+            JOptionPane.showMessageDialog(this,"DB Connection Failed");
+
+        }
+
+        setTitle("Simple ORM - Student Manager");
+        setSize(600,450);
+        setLayout(new BorderLayout());
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        JPanel buttonPanel = new JPanel(new GridLayout(1,5,10,10));
+
+        JButton insertBtn = new JButton("Insert");
+        JButton findBtn = new JButton("Find");
+        JButton deleteBtn = new JButton("Delete");
+        JButton viewBtn = new JButton("View All");
+        JButton updateBtn = new JButton("Update");
+
+        buttonPanel.add(insertBtn);
+        buttonPanel.add(findBtn);
+        buttonPanel.add(deleteBtn);
+        buttonPanel.add(viewBtn);
+        buttonPanel.add(updateBtn);
+
+        add(buttonPanel,BorderLayout.NORTH);
+
+        add(formPanel,BorderLayout.CENTER);
+
+        JButton enterBtn = new JButton("ENTER");
+
+        JPanel enterPanel = new JPanel();
+        enterPanel.add(enterBtn);
+
+        add(enterPanel,BorderLayout.EAST);
+
+        outputArea.setRows(8);
+        outputArea.setEditable(false);
+
+        add(new JScrollPane(outputArea),BorderLayout.SOUTH);
+
+        insertBtn.addActionListener(e -> showInsertForm());
+        findBtn.addActionListener(e -> showFindForm());
+        deleteBtn.addActionListener(e -> showDeleteForm());
+        updateBtn.addActionListener(e -> showUpdateForm());
+        viewBtn.addActionListener(e -> viewAllStudents());
+
+        enterBtn.addActionListener(e -> performAction());
+    }
+
+    // ---------- FORM BUILDERS ----------
+
+    private void showInsertForm(){
+
+        currentMode = "INSERT";
+
+        formPanel.removeAll();
+
+        formPanel.add(new JLabel("Roll Number"));
+        formPanel.add(rollField);
+
+        formPanel.add(new JLabel("Name"));
+        formPanel.add(nameField);
+
+        formPanel.add(new JLabel("Age"));
+        formPanel.add(ageField);
+
+        formPanel.add(new JLabel("Course"));
+        formPanel.add(courseField);
+
+        refreshForm();
+    }
+
+    private void showFindForm(){
+
+        currentMode = "FIND";
+
+        formPanel.removeAll();
+
+        formPanel.add(new JLabel("Roll Number"));
+        formPanel.add(rollField);
+
+        refreshForm();
+    }
+
+    private void showDeleteForm(){
+
+        currentMode = "DELETE";
+
+        formPanel.removeAll();
+
+        formPanel.add(new JLabel("Roll Number"));
+        formPanel.add(rollField);
+
+        refreshForm();
+    }
+
+    private void showUpdateForm(){
+
+        currentMode = "UPDATE";
+
+        formPanel.removeAll();
+
+        formPanel.add(new JLabel("Roll Number"));
+        formPanel.add(rollField);
+
+        formPanel.add(new JLabel("Name"));
+        formPanel.add(nameField);
+
+        formPanel.add(new JLabel("Age"));
+        formPanel.add(ageField);
+
+        formPanel.add(new JLabel("Course"));
+        formPanel.add(courseField);
+
+        refreshForm();
+    }
+
+    private void refreshForm(){
+
+        formPanel.revalidate();
+        formPanel.repaint();
+
+    }
+
+    // ---------- FIND BY ROLL NUMBER ----------
+
+    private Optional<Student> findByRollNumber(int rollNumber){
+
+        try{
+
+            ConnectionManager manager = new ConnectionManager();
+            Connection conn = manager.getConnection();
+
+            String sql = "SELECT * FROM students WHERE roll_number = ?";
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+
+            ps.setInt(1, rollNumber);
+
+            ResultSet rs = ps.executeQuery();
+
+            if(rs.next()){
+
+                Student s = new Student();
+
+                // IMPORTANT: Load the ORM Primary Key
+                s.setId(rs.getLong("id"));
+
+                s.setRollNumber(rs.getInt("roll_number"));
+                s.setName(rs.getString("name"));
+                s.setAge(rs.getInt("age"));
+                s.setCourse(rs.getString("course"));
+
+                return Optional.of(s);
+
+            }
+
+        }catch(Exception e){
+
+            e.printStackTrace();
+
+        }
+
+        return Optional.empty();
+    }
+
+    // ---------- ACTION HANDLER ----------
+
+    private void performAction(){
+
+        try{
+
+            switch(currentMode){
+
+                case "INSERT":
+
+                    Student s = new Student();
+
+                    s.setRollNumber(Integer.parseInt(rollField.getText()));
+                    s.setName(nameField.getText());
+                    s.setAge(Integer.parseInt(ageField.getText()));
+                    s.setCourse(courseField.getText());
+
+                    session.save(s);
+
+                    outputArea.setText("Student inserted successfully");
+
+                    break;
+
+                case "FIND":
+
+                    int roll = Integer.parseInt(rollField.getText());
+
+                    Optional<Student> student = findByRollNumber(roll);
+
+                    if(student.isPresent()){
+
+                        Student st = student.get();
+
+                        outputArea.setText(
+                                "Roll Number: "+st.getRollNumber()+"\n"+
+                                "Name: "+st.getName()+"\n"+
+                                "Age: "+st.getAge()+"\n"+
+                                "Course: "+st.getCourse()
+                        );
+
+                    }else{
+
+                        outputArea.setText("Student not found");
+
+                    }
+
+                    break;
+
+                case "DELETE":
+
+                    int delRoll = Integer.parseInt(rollField.getText());
+
+                    Optional<Student> st = findByRollNumber(delRoll);
+
+                    if(st.isPresent()){
+
+                        session.delete(st.get());
+
+                        outputArea.setText("Student deleted successfully");
+
+                    }else{
+
+                        outputArea.setText("Student not found");
+
+                    }
+
+                    break;
+
+                case "UPDATE":
+
+                    int updRoll = Integer.parseInt(rollField.getText());
+
+                    Optional<Student> stu = findByRollNumber(updRoll);
+
+                    if(stu.isPresent()){
+
+                        Student upd = stu.get();
+
+                        upd.setName(nameField.getText());
+                        upd.setAge(Integer.parseInt(ageField.getText()));
+                        upd.setCourse(courseField.getText());
+
+                        session.update(upd);
+
+                        outputArea.setText("Student updated successfully");
+
+                    }else{
+
+                        outputArea.setText("Student not found");
+
+                    }
+
+                    break;
+
+            }
+
+        }catch(Exception e){
+
+            outputArea.setText("Error: "+e.getMessage());
+
+        }
+
+    }
+
+    // ---------- VIEW ALL ----------
+
+    private void viewAllStudents(){
+
+        try{
+
+            List<Student> students = session.findAll(Student.class);
+
+            StringBuilder sb = new StringBuilder();
+
+            for(Student s : students){
+
+                sb.append(s.getRollNumber())
+                        .append(" | ")
+                        .append(s.getName())
+                        .append(" | ")
+                        .append(s.getAge())
+                        .append(" | ")
+                        .append(s.getCourse())
+                        .append("\n");
+
+            }
+
+            outputArea.setText(sb.toString());
+
+        }catch(Exception e){
+
+            outputArea.setText("Error loading students");
+
+        }
+
+    }
+}

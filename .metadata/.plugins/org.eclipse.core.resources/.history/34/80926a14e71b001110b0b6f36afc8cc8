@@ -1,0 +1,5 @@
+package com.yourcompany.simpleorm.exception;
+
+public class MappingException {
+
+}

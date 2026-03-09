@@ -1,0 +1,14 @@
+package com.yourcompany.simpleorm.exception;
+
+
+public class MappingException extends OrmException{
+	public MappingException(String message)
+	{
+		super(message);
+	}
+	
+	public MappingException(String message, Throwable cause) {
+		super(message, cause);
+	}
+}
+

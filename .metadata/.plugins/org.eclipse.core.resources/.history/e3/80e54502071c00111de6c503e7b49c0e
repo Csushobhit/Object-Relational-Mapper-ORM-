@@ -1,0 +1,27 @@
+package com.yourcompany.simpleorm.simple_orm_framework;
+
+public class App {
+
+    public static void main(String[] args) {
+
+        System.out.println("=================================");
+        System.out.println("      SIMPLE ORM FRAMEWORK       ");
+        System.out.println("=================================");
+
+        try {
+
+            // Start the menu driven driver
+            StudentDriver.run();
+
+        } catch (Exception e) {
+
+            System.out.println("Application failed to start.");
+            System.out.println("Reason: " + e.getMessage());
+
+            e.printStackTrace();
+        }
+
+        System.out.println("\nApplication terminated.");
+
+    }
+}

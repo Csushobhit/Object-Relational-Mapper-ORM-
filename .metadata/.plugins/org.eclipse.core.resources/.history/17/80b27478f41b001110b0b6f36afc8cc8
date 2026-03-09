@@ -1,0 +1,479 @@
+package com.yourcompany.simpleorm.session;
+
+import com.yourcompany.simpleorm.jdbc.ConnectionManager;
+import com.yourcompany.simpleorm.util.OrmMetadataExtractor;
+import com.yourcompany.simpleorm.metadata.OrmMetadata;
+import com.yourcompany.simpleorm.exception.MappingException;
+import com.yourcompany.simpleorm.exception.OrmException;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.math.BigDecimal;
+import java.sql.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class SimpleOrmSession implements OrmSession {
+
+    private static final Map<Class<?>, Integer> JAVA_TO_SQL_TYPE_MAP = Map.ofEntries(
+            Map.entry(String.class, Types.VARCHAR),
+            Map.entry(Integer.class, Types.INTEGER), Map.entry(int.class, Types.INTEGER),
+            Map.entry(Long.class, Types.BIGINT), Map.entry(long.class, Types.BIGINT),
+            Map.entry(Double.class, Types.DOUBLE), Map.entry(double.class, Types.DOUBLE),
+            Map.entry(Float.class, Types.FLOAT), Map.entry(float.class, Types.FLOAT),
+            Map.entry(Boolean.class, Types.BOOLEAN), Map.entry(boolean.class, Types.BOOLEAN),
+            Map.entry(java.sql.Date.class, Types.DATE),
+            Map.entry(LocalDate.class, Types.DATE),
+            Map.entry(java.sql.Timestamp.class, Types.TIMESTAMP),
+            Map.entry(LocalDateTime.class, Types.TIMESTAMP),
+            Map.entry(BigDecimal.class, Types.DECIMAL)
+    );
+
+    private static int getSqlTypeForJavaType(Class<?> javaType) {
+        return JAVA_TO_SQL_TYPE_MAP.getOrDefault(javaType, Types.OTHER);
+    }
+
+    private Connection connection;
+    private boolean isTransactionActive = false;
+
+    public SimpleOrmSession(Connection connection) {
+
+        this.connection = Objects.requireNonNull(connection,
+                "Database connection cannot be null for OrmSession.");
+
+        try {
+
+            if (this.connection.isClosed()) {
+                throw new IllegalArgumentException(
+                        "Cannot create OrmSession with a closed database connection.");
+            }
+
+            System.out.println("SimpleOrmSession created with active connection: " + this.connection);
+
+        } catch (SQLException e) {
+
+            throw new OrmException("Failed verifying connection status", e);
+        }
+    }
+
+    // ================= SAVE =================
+
+    @Override
+    public void save(Object entity) {
+
+        if (entity == null) {
+            throw new OrmException("Cannot save a null entity.");
+        }
+
+        Class<?> entityClass = entity.getClass();
+
+        System.out.println("SimpleOrmSession.save() called for entity of type: " + entityClass.getName());
+
+        OrmMetadata<?> metadata = OrmMetadataExtractor.getMetadata(entityClass);
+
+        Field primaryKeyField = metadata.primaryKeyField();
+
+        if (primaryKeyField == null) {
+            throw new OrmException("Entity " + entityClass.getName() + " does not have an @Id field.");
+        }
+
+        List<String> columnNamesForInsert = new ArrayList<>();
+        List<Field> fieldsForInsert = new ArrayList<>();
+
+        for (Map.Entry<Field, String> entry : metadata.columnNames().entrySet()) {
+
+            Field field = entry.getKey();
+
+            if (!field.equals(primaryKeyField)) {
+                columnNamesForInsert.add(entry.getValue());
+                fieldsForInsert.add(field);
+            }
+        }
+
+        String columnsPart = String.join(", ", columnNamesForInsert);
+
+        String parametersPart = columnNamesForInsert
+                .stream()
+                .map(col -> "?")
+                .collect(Collectors.joining(", "));
+
+        String sqlInsertStatement = String.format(
+                "INSERT INTO %s (%s) VALUES (%s)",
+                metadata.tableName(),
+                columnsPart,
+                parametersPart
+        );
+
+        System.out.println("Generated SQL: " + sqlInsertStatement);
+
+        try (PreparedStatement preparedStatement =
+                     this.connection.prepareStatement(sqlInsertStatement)) {
+
+            int parameterIndex = 1;
+
+            for (Field field : fieldsForInsert) {
+
+                field.setAccessible(true);
+                Object value = field.get(entity);
+
+                if (value == null) {
+
+                    int sqlType = getSqlTypeForJavaType(field.getType());
+                    preparedStatement.setNull(parameterIndex, sqlType);
+
+                } else {
+
+                    preparedStatement.setObject(parameterIndex, value);
+                }
+
+                parameterIndex++;
+            }
+
+            int rowsAffected = preparedStatement.executeUpdate();
+
+            if (rowsAffected != 1) {
+                throw new OrmException("Insert operation failed for entity " + entityClass.getName());
+            }
+
+        } catch (SQLException | IllegalAccessException e) {
+
+            throw new OrmException("Database error during save operation", e);
+        }
+    }
+
+    // ================= FIND BY ID =================
+
+    @Override
+    public <T> Optional<T> findById(Class<T> clazz, Object id) {
+
+        if (clazz == null)
+            throw new OrmException("Entity class cannot be null.");
+
+        if (id == null)
+            throw new OrmException("ID cannot be null.");
+
+        System.out.println("findById called for: " + clazz.getSimpleName() + ", id: " + id);
+
+        OrmMetadata<T> metadata = OrmMetadataExtractor.getMetadata(clazz);
+
+        Collection<String> allColumnNames = metadata.columnNames().values();
+
+        if (allColumnNames.isEmpty())
+            throw new OrmException("No columns mapped for entity: " + clazz.getName());
+
+        String selectColumnsPart = String.join(", ", allColumnNames);
+
+        String sql = String.format(
+                "SELECT %s FROM %s WHERE %s = ?",
+                selectColumnsPart,
+                metadata.tableName(),
+                metadata.primaryKeyColumnName()
+        );
+
+        try (PreparedStatement preparedStatement =
+                     this.connection.prepareStatement(sql)) {
+
+            preparedStatement.setObject(1, id);
+
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+
+                if (resultSet.next()) {
+
+                    T instance;
+
+                    try {
+
+                        Constructor<T> constructor = clazz.getDeclaredConstructor();
+                        constructor.setAccessible(true);
+                        instance = constructor.newInstance();
+
+                    } catch (NoSuchMethodException |
+                             InstantiationException |
+                             IllegalAccessException |
+                             InvocationTargetException e) {
+
+                        throw new MappingException(
+                                "Failed to instantiate entity class " + clazz.getName(), e);
+                    }
+
+                    for (Map.Entry<Field, String> entry :
+                            metadata.columnNames().entrySet()) {
+
+                        Field field = entry.getKey();
+                        String columnName = entry.getValue();
+
+                        Object mappedValue;
+
+                        try {
+
+                            Object sqlValue = resultSet.getObject(columnName);
+
+                            mappedValue = mapSqlValueToJavaType(
+                                    sqlValue,
+                                    field.getType(),
+                                    resultSet,
+                                    columnName
+                            );
+
+                            field.setAccessible(true);
+                            field.set(instance, mappedValue);
+
+                        } catch (SQLException e) {
+
+                            throw new MappingException(
+                                    "Error retrieving column " + columnName +
+                                            " while mapping " + clazz.getName(), e);
+
+                        } catch (IllegalAccessException e) {
+
+                            throw new MappingException(
+                                    "Reflection error setting field " + field.getName(), e);
+
+                        } catch (IllegalArgumentException e) {
+
+                            throw new MappingException(
+                                    "Type mismatch mapping column " + columnName +
+                                            " to field " + field.getName(), e);
+                        }
+                    }
+
+                    return Optional.of(instance);
+                }
+
+                return Optional.empty();
+            }
+
+        } catch (SQLException e) {
+
+            throw new OrmException(
+                    "Database error during findById for " + clazz.getName(), e);
+        }
+    }
+    
+    // ================= TRANSACTIONS =================
+    
+    @Override
+    public void beginTransaction() throws OrmException
+    {
+    	if (this.connection == null) {
+            throw new OrmException("Session is closed. Cannot begin transaction.");
+        }
+    	 if (isTransactionActive) {
+             throw new OrmException("Transaction is already active. Cannot begin a new one.");
+         }
+    	try {
+            System.out.println("Beginning transaction...");
+            
+            this.connection.setAutoCommit(false);
+            this.isTransactionActive = true; // Mark transaction as active
+            System.out.println("   Auto-commit disabled. Transaction started.");
+        } catch (SQLException e) {
+            
+            System.err.println("ERROR: Failed to begin transaction.");
+            throw new OrmException("Failed to begin transaction on database connection.", e);
+        }	
+
+    }
+    
+    @Override
+    public void commit() throws OrmException {
+        if (this.connection == null) {
+            throw new OrmException("Session is closed. Cannot commit transaction.");
+        }
+        if (!isTransactionActive) {
+             throw new OrmException("Transaction is not active. Cannot commit.");
+        }
+        try {
+            System.out.println("Committing transaction...");
+            this.connection.commit();
+            System.out.println("   Transaction committed successfully.");
+            this.isTransactionActive = false;
+        }catch(SQLException e)
+        {
+        	System.err.println("ERROR: Failed to commit transaction.");
+        	throw new OrmException("Failed to commit transaction.", e);
+        } finally {
+            // 5. Restore auto-commit (optional but good practice)
+            // This happens *after* commit succeeds or fails (in finally block)
+            // We attempt this even if commit failed, to try and return the connection to a normal state.
+            try {
+                if (this.connection != null && !this.connection.isClosed()) {
+                    this.connection.setAutoCommit(true);
+                    System.out.println("   Auto-commit re-enabled.");
+                }
+            } catch (SQLException e) {
+            	
+            	System.err.println("   WARNING: Failed to reset auto-commit to true after commit/attempted commit. " + e.getMessage());
+                
+            }
+             isTransactionActive = false;
+        }
+    }
+    @Override
+    public void rollback() throws OrmException {
+         if (this.connection == null) {
+            System.err.println("Session is closed. Cannot explicitly rollback transaction.");
+            return; 
+        }
+         if (!isTransactionActive) {
+             
+             System.out.println("Rollback called, but no transaction was active.");
+             
+             return;
+         }
+         try {
+        	 System.out.println("Rolling back transactions...");
+        	 this.connection.rollback();
+        	 System.out.println("Transaction rolled back successfully");
+        	 this.isTransactionActive = false;
+         }catch(SQLException e)
+         {
+        	 System.err.println("ERROR: Failed to rollback transaction.");
+        	 throw new OrmException("Failed to rollback transaction.", e);
+         } finally
+         {
+        	 isTransactionActive = false;
+        	 try
+        	 {
+        		 if (this.connection != null && !this.connection.isClosed()) {
+                     this.connection.setAutoCommit(true);
+                     System.out.println("   Auto-commit re-enabled after rollback attempt.");
+        		 }
+        	 } catch(SQLException e)
+        	 {
+        		 System.err.println("WARNING: Failed to reset auto-commit to true after rollback attempt." + e.getMessage());
+        	 }
+         }
+    }
+	@Override
+    public boolean isTransactionActive() {
+        return this.isTransactionActive;
+    }
+    // ================= SQL → JAVA TYPE MAPPING =================
+
+    @SuppressWarnings({"unchecked","rawtypes"})
+    private Object mapSqlValueToJavaType(
+            Object sqlValue,
+            Class<?> targetType,
+            ResultSet rs,
+            String columnName) throws SQLException {
+
+        if (sqlValue == null || rs.wasNull()) {
+
+            if (targetType.isPrimitive()) {
+                throw new MappingException(
+                        "Cannot assign NULL to primitive field mapped from column "
+                                + columnName);
+            }
+
+            return null;
+        }
+
+        if (targetType.isAssignableFrom(sqlValue.getClass())) {
+            return sqlValue;
+        }
+
+        if (sqlValue instanceof BigDecimal bd) {
+
+            if (targetType == Integer.class || targetType == int.class)
+                return bd.intValueExact();
+
+            if (targetType == Long.class || targetType == long.class)
+                return bd.longValueExact();
+
+            if (targetType == Double.class || targetType == double.class)
+                return bd.doubleValue();
+
+            if (targetType == Float.class || targetType == float.class)
+                return bd.floatValue();
+        }
+
+        if ((targetType == Boolean.class || targetType == boolean.class)
+                && sqlValue instanceof Number number) {
+
+            return number.intValue() != 0;
+        }
+
+        if (sqlValue instanceof java.sql.Date date && targetType == LocalDate.class) {
+            return date.toLocalDate();
+        }
+
+        if (sqlValue instanceof java.sql.Timestamp ts && targetType == LocalDateTime.class) {
+            return ts.toLocalDateTime();
+        }
+
+        // -------- STRING → ENUM --------
+        if (targetType.isEnum() && sqlValue instanceof String) {
+
+            String enumName = (String) sqlValue;
+
+            try {
+                return Enum.valueOf((Class<Enum>) targetType, enumName);
+            } catch (IllegalArgumentException e) {
+
+                throw new MappingException(
+                        "Invalid enum value '" + enumName +
+                                "' for enum " + targetType.getName()
+                );
+            }
+        }
+
+        // -------- INTEGER → ENUM (ORDINAL) --------
+        if (targetType.isEnum() && sqlValue instanceof Number) {
+
+            int ordinal = ((Number) sqlValue).intValue();
+
+            Object[] enumConstants = targetType.getEnumConstants();
+
+            if (ordinal < 0 || ordinal >= enumConstants.length) {
+
+                throw new MappingException(
+                        "Invalid ordinal '" + ordinal +
+                                "' for enum " + targetType.getName()
+                );
+            }
+
+            return enumConstants[ordinal];
+        }
+
+        throw new MappingException(
+                "Unsupported SQL → Java mapping: column "
+                        + columnName +
+                        " SQL type " + sqlValue.getClass().getName() +
+                        " → Java type " + targetType.getName());
+    }
+
+    // ================== CLOSE =================
+
+    @Override
+    public void close() throws Exception {
+
+        System.out.println("Closing SimpleOrmSession...");
+
+        try {
+
+            if (this.connection != null && !this.connection.isClosed()) {
+
+                if (isTransactionActive) {
+                    System.out.println("Active transaction detected during close. Rolling back...");
+                    this.connection.rollback();
+                }
+
+                this.connection.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+
+            System.err.println("WARNING: Failed during session close cleanup: " + e.getMessage());
+        }
+
+        ConnectionManager.closeConnection(this.connection);
+
+        this.connection = null;
+
+        System.out.println("SimpleOrmSession closed.");
+    }
+}

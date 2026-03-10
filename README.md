@@ -48,24 +48,7 @@ Users can:
 
 ### GUI Preview
 
-Replace the file below with your screen recording GIF later:
-
-```
-/docs/gui-demo.gif
-```
-
-Example:
-
-```
-docs/gui-demo.gif
-```
-
-Then the README will display it like this:
-
-```
-![GUI Demo](docs/gui-demo.gif)
-```
-
+![ORM GUI Demo](docs/gui-demo.gif)
 ---
 
 # Architecture

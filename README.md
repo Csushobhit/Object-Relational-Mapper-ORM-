@@ -49,6 +49,7 @@ Users can:
 ### GUI Preview
 
 ![ORM GUI Demo](docs/gui-demo.gif)
+
 ---
 
 # Architecture
@@ -102,6 +103,724 @@ Builds queries dynamically.
 5️⃣ **JDBC Layer**
 
 Executes prepared statements.
+
+---
+
+# ⚙️ Internal Execution Workflow
+
+This section explains **how the application actually runs internally**, starting from launching the application to performing database operations.
+
+---
+
+# 1️⃣ Application Startup (App.java)
+
+### File
+```
+App.java
+```
+
+### What happens
+
+When you run:
+
+```java
+public static void main(String[] args) {
+    new StudentDriver();
+}
+```
+
+### Call Flow
+
+```
+App.java
+   ↓
+StudentDriver constructor
+```
+
+So **App.java does only one thing**
+
+➡ Launches the GUI application.
+
+---
+
+# 2️⃣ GUI Initialization
+
+### File
+
+```
+StudentDriver.java
+```
+
+### Constructor runs
+
+```java
+public StudentDriver()
+```
+
+### Step-by-step execution
+
+---
+
+## 1. Create database connection
+
+```
+StudentDriver
+   ↓
+ConnectionManager
+```
+
+Code:
+
+```java
+ConnectionManager manager = new ConnectionManager();
+Connection conn = manager.getConnection();
+```
+
+Class used:
+
+```
+jdbc/ConnectionManager.java
+```
+
+Inside it:
+
+```
+DriverManager.getConnection(...)
+```
+
+So the actual chain becomes:
+
+```
+StudentDriver
+   ↓
+ConnectionManager
+   ↓
+DriverManager
+   ↓
+MySQL Database
+```
+
+---
+
+## 2. Create ORM Session
+
+Back in `StudentDriver`:
+
+```java
+session = new SimpleOrmSession(conn);
+```
+
+This initializes:
+
+```
+session/SimpleOrmSession.java
+```
+
+This object becomes the **core ORM engine**.
+
+All CRUD operations flow through:
+
+```
+StudentDriver
+   ↓
+SimpleOrmSession
+```
+
+---
+
+## 3. GUI components created
+
+Inside constructor:
+
+- JFrame
+- JPanel
+- JButton
+- JTextField
+- JTextArea
+
+Buttons created:
+
+```
+Insert
+Find
+Delete
+View All
+Update
+```
+
+Each button registers an **ActionListener**.
+
+Example:
+
+```java
+insertBtn.addActionListener(e -> showInsertForm());
+```
+
+Clicking the button triggers:
+
+```
+StudentDriver.showInsertForm()
+```
+
+---
+
+# 3️⃣ INSERT Operation Lifecycle
+
+### User Flow
+
+```
+User clicks Insert
+↓
+GUI shows form
+↓
+User enters data
+↓
+User clicks ENTER
+↓
+performAction()
+```
+
+---
+
+## Step 1
+
+```
+StudentDriver.showInsertForm()
+```
+
+This function builds the form fields.
+
+```
+Roll number
+Name
+Age
+Course
+```
+
+No database interaction yet.
+
+---
+
+## Step 2
+
+User clicks **ENTER**
+
+```
+StudentDriver.performAction()
+```
+
+Code branch:
+
+```
+case "INSERT"
+```
+
+---
+
+## Step 3
+
+Entity object created
+
+```java
+Student s = new Student();
+```
+
+Class used:
+
+```
+simple_orm_framework/Student.java
+```
+
+This is an **ORM Entity**.
+
+Annotations used:
+
+```
+@Entity
+@Table
+@Column
+@Id
+```
+
+---
+
+## Step 4
+
+Driver fills the entity:
+
+```java
+s.setRollNumber(...)
+s.setName(...)
+s.setAge(...)
+s.setCourse(...)
+```
+
+Now we have:
+
+```
+Student object in memory
+```
+
+---
+
+## Step 5
+
+Driver calls ORM:
+
+```java
+session.save(s)
+```
+
+Call flow:
+
+```
+StudentDriver
+   ↓
+SimpleOrmSession.save()
+```
+
+---
+
+# 4️⃣ What Happens Inside save()
+
+File:
+
+```
+SimpleOrmSession.java
+```
+
+Function:
+
+```
+save(Object entity)
+```
+
+---
+
+### Step 1 — Metadata Extraction
+
+```
+OrmMetadataExtractor.getMetadata(entityClass)
+```
+
+Class used:
+
+```
+util/OrmMetadataExtractor.java
+```
+
+Reflection reads annotations:
+
+```
+@Entity
+@Table
+@Column
+@Id
+```
+
+Reflection process:
+
+```
+Class<?> clazz = entity.getClass()
+
+clazz.getDeclaredFields()
+```
+
+Extracted metadata:
+
+```
+Table name
+Primary key field
+Column names
+```
+
+---
+
+### Step 2 — Metadata Object Created
+
+Class used:
+
+```
+metadata/OrmMetadata.java
+```
+
+Stores:
+
+```
+tableName
+primaryKeyField
+columnNames
+```
+
+Now ORM understands:
+
+```
+students table
+roll_number column
+name column
+age column
+course column
+```
+
+---
+
+### Step 3 — SQL Generation
+
+SQL dynamically generated:
+
+```
+INSERT INTO students (roll_number,name,age,course)
+VALUES (?,?,?,?)
+```
+
+---
+
+### Step 4 — PreparedStatement Creation
+
+```
+connection.prepareStatement(sql)
+```
+
+Flow:
+
+```
+SimpleOrmSession
+   ↓
+Connection
+   ↓
+PreparedStatement
+```
+
+---
+
+### Step 5 — Parameter Binding
+
+Reflection extracts values:
+
+```
+field.get(entity)
+```
+
+Example:
+
+```
+roll_number → 101
+name → John
+age → 21
+course → CS
+```
+
+Prepared statement:
+
+```
+ps.setObject(...)
+```
+
+---
+
+### Step 6 — Execute Query
+
+```
+ps.executeUpdate()
+```
+
+Database operation:
+
+```
+MySQL
+INSERT row
+```
+
+---
+
+### Step 7 — Session Cache Update
+
+Your ORM includes **entity caching**.
+
+Structure:
+
+```
+Map<Class<?>, Map<Object, Object>>
+```
+
+Meaning:
+
+```
+EntityClass → PrimaryKey → Object
+```
+
+Entity may now be stored in cache.
+
+---
+
+### Step 8 — Control Returns
+
+```
+SimpleOrmSession
+   ↓
+StudentDriver
+```
+
+GUI prints:
+
+```
+Student inserted successfully
+```
+
+---
+
+# 5️⃣ FIND Operation Lifecycle
+
+User flow:
+
+```
+Find button
+↓
+Enter roll number
+↓
+ENTER
+```
+
+Step 1
+
+```
+StudentDriver.performAction()
+```
+
+Branch:
+
+```
+case "FIND"
+```
+
+---
+
+### Step 2
+
+Driver calls helper method:
+
+```
+findByRollNumber()
+```
+
+Currently implemented using **manual JDBC query**.
+
+Flow:
+
+```
+StudentDriver
+   ↓
+ConnectionManager
+   ↓
+PreparedStatement
+   ↓
+ResultSet
+```
+
+SQL executed:
+
+```
+SELECT * FROM students WHERE roll_number=?
+```
+
+---
+
+### Step 3
+
+ResultSet read
+
+```
+rs.getInt
+rs.getString
+```
+
+---
+
+### Step 4
+
+Student object created
+
+```
+Student s = new Student()
+```
+
+---
+
+### Step 5
+
+Returned as:
+
+```
+Optional<Student>
+```
+
+---
+
+### Step 6
+
+GUI displays result
+
+```
+Name
+Age
+Course
+```
+
+---
+
+# 6️⃣ UPDATE Operation Lifecycle
+
+User flow:
+
+```
+Update button
+↓
+Enter roll number
+↓
+Enter new values
+↓
+ENTER
+```
+
+Step 1
+
+```
+StudentDriver.performAction()
+```
+
+Branch:
+
+```
+UPDATE
+```
+
+---
+
+### Step 2
+
+Driver fetches existing record
+
+```
+findByRollNumber()
+```
+
+---
+
+### Step 3
+
+Entity updated
+
+```
+student.setName(...)
+student.setAge(...)
+student.setCourse(...)
+```
+
+---
+
+### Step 4
+
+Driver calls ORM
+
+```
+session.update(student)
+```
+
+---
+
+# 7️⃣ Inside update()
+
+Metadata extracted again.
+
+Primary key detected:
+
+```
+@Id → roll_number
+```
+
+SQL generated:
+
+```
+UPDATE students
+SET name=?,age=?,course=?
+WHERE roll_number=?
+```
+
+PreparedStatement executed:
+
+```
+ps.executeUpdate()
+```
+
+Cache entry updated.
+
+---
+
+# 8️⃣ DELETE Operation Lifecycle
+
+User flow:
+
+```
+Delete
+↓
+Enter roll number
+↓
+ENTER
+```
+
+Driver fetches entity:
+
+```
+findByRollNumber()
+```
+
+Then calls:
+
+```
+session.delete(student)
+```
+
+SQL executed:
+
+```
+DELETE FROM students
+WHERE roll_number=?
+```
+
+Cache entry removed.
+
+---
+
+# 9️⃣ VIEW ALL Operation Lifecycle
+
+User clicks **View All**
+
+Driver calls:
+
+```
+session.findAll(Student.class)
+```
+
+Inside ORM:
+
+```
+SELECT roll_number,name,age,course
+FROM students
+```
+
+Each row mapped to:
+
+```
+Student object
+```
+
+Returned as:
+
+```
+List<Student>
+```
+
+Displayed in GUI.
 
 ---
 
